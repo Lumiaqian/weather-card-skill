@@ -1,13 +1,15 @@
 ---
 name: weather-card
 description: >
-  Generate weather cards via Gemini. Supports fetching weather data, generating visual weather cards in app/social/xiaohongshu styles.
+  Generate weather cards via an agent-first workflow. Supports gathering weather facts, normalizing them,
+  and generating visual weather cards in app/social/xiaohongshu styles via Gemini.
   Use when user asks for "天气卡片", "今日天气卡", "城市天气海报", "weather card", "小红书天气卡", or "社媒天气图".
 ---
 
 # Weather Card Skill
 
-Generate shareable weather cards using Gemini. Fetches real weather data and generates beautiful images.
+Generate shareable weather cards using an agent-orchestrated workflow.
+Gather weather facts first, then use Gemini to generate the final image.
 
 ## Prerequisites
 
@@ -16,15 +18,26 @@ Generate shareable weather cards using Gemini. Fetches real weather data and gen
 
 ## Workflow
 
-### Step 1: Get Weather Data
+### Step 1: Resolve Inputs
 
-```bash
-gemini-web-cli send-message \
-  --message "请用中文简洁回答：北京今天（YYYY-MM-DD）的天气，包括：天气现象、温度（高/低）、湿度、风速、降雨概率、日出日落时间" \
-  --json
-```
+Identify:
 
-Extract and structure the data:
+- `city`
+- `date`
+- `style`
+
+Defaults:
+
+- `date`: today
+- `style`: infer from user intent, otherwise `social`
+
+If `city` is missing, ask the user before continuing.
+
+### Step 2: Get Weather Data
+
+Do not ask Gemini to decide the weather directly.
+
+Use agents to gather weather information first, then normalize it into this structure:
 
 | Field | Example |
 |--------|---------|
@@ -38,8 +51,18 @@ Extract and structure the data:
 | rain_prob | 10% |
 | sunrise | 06:15 |
 | sunset | 18:42 |
+| source | multi-source |
+| confidence | high |
 
-### Step 2: Select Style
+Requirements:
+
+- fill all core weather fields before image generation
+- if sources conflict on important values, lower confidence
+- if key fields are missing, retry fact gathering before continuing
+
+Gemini may help rewrite or summarize structured data later, but it should not be the primary weather source.
+
+### Step 3: Select Style
 
 Based on user intent:
 
@@ -49,7 +72,19 @@ Based on user intent:
 | "社媒卡片" / "social" | **social** — Soft colors, title-focused |
 | "小红书风" / "博主风" | **xiaohongshu** — Lifestyle tone, pastel colors |
 
-### Step 3: Generate Image
+If the user explicitly names a style, use it.
+
+### Step 4: Generate Copy
+
+After weather data is validated, optionally use Gemini to generate:
+
+- a short title
+- a subtitle
+- a lifestyle suggestion
+
+Do not let Gemini invent missing weather values.
+
+### Step 5: Generate Image
 
 ```bash
 gemini-web-cli generate-image \
@@ -57,6 +92,13 @@ gemini-web-cli generate-image \
   --timeout-ms 180000 \
   --json
 ```
+
+Prompt rules:
+
+- always use validated weather fields
+- include city, date, weather, and temperature
+- include style-specific composition guidance
+- never ask Gemini to guess the weather
 
 ## Prompt Templates
 
@@ -71,18 +113,18 @@ Create a weather card image with these specifications:
 - City: {city}
 - Date: {date}
 - Weather icon: {weather_symbol}
-- Temperature: {temp_high}° / {temp_low}°
+- Temperature: {temp_high} / {temp_low}
 - Humidity: {humidity}
 - Wind: {wind}
-- Rain probability: {rain_prob}%
+- Rain probability: {rain_prob}
 
 **Style Requirements**:
 - Modern weather app aesthetic
 - Clear information hierarchy
 - Minimal decoration, data takes priority
-- Professional color scheme (blues, whites, grays)
+- Professional color scheme
 - Sans-serif typography
-- Show weather-appropriate background (sunny = blue sky, rainy = gray with rain drops, etc.)
+- Show weather-appropriate background
 
 **Composition**:
 - Top: City name and date
@@ -101,19 +143,18 @@ Create a shareable social media weather card:
 - City: {city}
 - Date: {date}
 - Weather: {weather}
-- Temperature: {temp_high}° / {temp_low}°
+- Temperature: {temp_high} / {temp_low}
 
 **Style Requirements**:
 - Eye-catching, title-focused design
 - Soft, warm color palette
 - Romantic/moody atmosphere
-- Text as a headline, not just data
-- Add decorative elements (clouds, sun rays, etc.)
 - Lifestyle feel, not just weather report
+- Decorative but readable
 
 **Example Text Elements**:
 - Tagline: "今日天气 · {city}"
-- Subtitle: "[季节感]的{city}，宜{activity}"
+- Subtitle: "{city}，{short_mood_line}"
 
 **Composition**:
 - Large atmospheric background
@@ -133,31 +174,30 @@ Create a Xiaohongshu (Little Red Book) style weather card:
 - City: {city}
 - Date: {date}
 - Weather: {weather}
-- Temperature: {temp_high}° / {temp_low}°
+- Temperature: {temp_high} / {temp_low}
 
 **Style Requirements**:
 - Soft, creamy pastel colors
 - Cute sticker-like labels
 - Lifestyle blogger tone
-- Warmer, more emotional than social style
 - Playful weather icons
 - Chinese aesthetic with modern touch
 
 **Text Elements**:
 - Label: "今日天气"
-- Title: "[诗意/场景化描述], {city}"
+- Title: "{city}天气"
 - Suggestion: "宜：{lifestyle_suggestion}"
 - Temperature as prominent display
 
 **Composition**:
-- Soft gradient background (dawn/day/dusk based on time)
+- Soft gradient background
 - Main weather illustration
 - Sticker-style weather tags
 - Lifestyle suggestion badge
 - Date in cute format
 ```
 
-## Lifestyle Suggestions (for xiaohongshu style)
+## Lifestyle Suggestions
 
 | Weather | Suggestion |
 |--------|------------|
@@ -187,17 +227,38 @@ Save the generated image and provide:
 1. **Image file**: `{city}-{date}-weather-card.{ext}`
 2. **Data summary**: Weather data in markdown format
 
+Suggested markdown format:
+
+```md
+# 天气数据
+
+- 城市：{city}
+- 日期：{date}
+- 天气：{weather}
+- 温度：{temp_low} ~ {temp_high}
+- 湿度：{humidity}
+- 风力：{wind}
+- 降雨概率：{rain_prob}
+- 日出：{sunrise}
+- 日落：{sunset}
+- 来源：{source}
+- 置信度：{confidence}
+```
+
 ## Error Handling
 
 | Error | Solution |
 |-------|----------|
+| City missing | Ask user for city |
+| Incomplete weather data | Retry fact gathering before image generation |
+| Conflicting weather values | Lower confidence and report discrepancy |
 | "Not logged in" | Run `gemini-web-cli check-login --json` first |
 | Timeout | Increase `--timeout-ms 300000` |
 | Element not found | Run `gemini-web-cli reload-page --json` then retry |
 
 ## Notes
 
-- Gemini image generation takes 60-180 seconds
-- Always use `--timeout-ms 180000` minimum
+- Gather weather facts first, generate image second
+- Use Gemini for wording and image generation, not as the primary weather source
+- Keep prompts concise but include all validated weather data
 - If generation fails, retry once before reporting
-- Keep prompts concise but include all weather data
