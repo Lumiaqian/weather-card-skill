@@ -227,6 +227,12 @@ Save the generated image and provide:
 1. **Image file**: `{city}-{date}-weather-card.{ext}`
 2. **Data summary**: Weather data in markdown format
 
+Output rule:
+
+- keep only the final skill-named image file
+- treat any Gemini-generated raw filename as a temporary file
+- after successful rename or copy, delete the Gemini raw output so no duplicate image remains
+
 Suggested markdown format:
 
 ```md
@@ -261,4 +267,5 @@ Suggested markdown format:
 - Gather weather facts first, generate image second
 - Use Gemini for wording and image generation, not as the primary weather source
 - Keep prompts concise but include all validated weather data
+- Do not keep both a Gemini raw image file and a final renamed copy
 - If generation fails, retry once before reporting
