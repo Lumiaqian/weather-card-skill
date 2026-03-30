@@ -89,6 +89,7 @@ Do not let Gemini invent missing weather values.
 ```bash
 gemini-web-cli generate-image \
   --prompt "[see prompt template below]" \
+  --full-size \
   --timeout-ms 180000 \
   --json
 ```
@@ -98,6 +99,7 @@ Prompt rules:
 - always use validated weather fields
 - include city, date, weather, and temperature
 - include style-specific composition guidance
+- use `--full-size` so the final card keeps the highest-resolution output
 - never ask Gemini to guess the weather
 
 ## Prompt Templates
@@ -231,7 +233,8 @@ Output rule:
 
 - keep only the final skill-named image file
 - treat any Gemini-generated raw filename as a temporary file
-- after successful rename or copy, delete the Gemini raw output so no duplicate image remains
+- prefer the `--full-size` image as the final deliverable
+- after successful rename or move, delete any Gemini raw output so no duplicate image remains
 
 Suggested markdown format:
 
@@ -259,6 +262,7 @@ Suggested markdown format:
 | Incomplete weather data | Retry fact gathering before image generation |
 | Conflicting weather values | Lower confidence and report discrepancy |
 | "Not logged in" | Run `gemini-web-cli check-login --json` first |
+| Full-size download fails | Retry once without `--full-size`, then rename the successful output to the final skill filename |
 | Timeout | Increase `--timeout-ms 300000` |
 | Element not found | Run `gemini-web-cli reload-page --json` then retry |
 
@@ -267,5 +271,6 @@ Suggested markdown format:
 - Gather weather facts first, generate image second
 - Use Gemini for wording and image generation, not as the primary weather source
 - Keep prompts concise but include all validated weather data
+- Prefer `--full-size` output for the final delivered weather card
 - Do not keep both a Gemini raw image file and a final renamed copy
 - If generation fails, retry once before reporting
